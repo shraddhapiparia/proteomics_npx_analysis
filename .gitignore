@@ -1,0 +1,30 @@
+# data
+data/raw/
+data/interim/
+data/processed/
+
+# results generated during analysis
+results/**/*.tsv
+results/**/*.csv
+results/**/*.parquet
+results/**/*.rds
+results/**/*.pkl
+results/**/*.html
+
+# environments
+.env
+.venv/
+venv/
+
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# mac/linux
+.DS_Store
