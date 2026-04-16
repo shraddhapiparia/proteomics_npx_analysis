@@ -6,6 +6,8 @@ from pyspark.sql.functions import (
 from functools import reduce
 import re
 
+DURATION_THRESHOLD = (3, 4) # 4–12 weeks or >12 weeks.
+
 spark = SparkSession.builder.getOrCreate()
 
 # ================================================================
@@ -50,6 +52,37 @@ print(f"Rows: {n_rows:,}  |  Cols: {n_cols:,}")
 # 2. VALIDATE EXPECTED FIELDS EXIST
 # Fail early with a clear message rather than a cryptic KeyError.
 # ================================================================
+SYMPTOM_FIELDS_RAW = [
+    "participant.p28606", "participant.p28607",
+    "participant.p28609", "participant.p28610",
+    "participant.p28612", "participant.p28613",
+    "participant.p28615", "participant.p28616",
+    "participant.p28624", "participant.p28625",
+    "participant.p28627", "participant.p28628",
+    "participant.p28630", "participant.p28631",
+    "participant.p28633", "participant.p28634",
+    "participant.p28642", "participant.p28643",
+    "participant.p28645", "participant.p28646",
+    "participant.p28648", "participant.p28649",
+    "participant.p28654", "participant.p28655",
+    "participant.p28657", "participant.p28658",
+    "participant.p28663", "participant.p28664",
+    "participant.p28678", "participant.p28679",
+    "participant.p28681", "participant.p28682",
+    "participant.p28684", "participant.p28685",
+    "participant.p28687", "participant.p28688",
+    "participant.p28693", "participant.p28694",
+    "participant.p28696", "participant.p28697",
+    "participant.p28699", "participant.p28700",
+    "participant.p28702", "participant.p28703",
+    "participant.p28711", "participant.p28712",
+    "participant.p28714", "participant.p28715",
+    "participant.p28720", "participant.p28721",
+    "participant.p28723", "participant.p28724",
+    "participant.p28726", "participant.p28727",
+    "participant.p28732", "participant.p28733",
+]
+
 EXPECTED_FIELDS = [
     EID, SEX, AGE, ICD10, ICD9,
     COVID_FIRST, COVID_LAST, ANTIBODY, COVID_TESTS,
@@ -70,7 +103,6 @@ present_fields = [f for f in EXPECTED_FIELDS if f in raw_df.columns]
 
 # ================================================================
 # 3. SINGLE-PASS MISSINGNESS SUMMARY
-# One Spark job for all fields instead of one job per field.
 # ================================================================
 def missingness_summary(df, fields, total_rows):
     """Return a DataFrame with null counts and pct for every field."""
@@ -109,36 +141,6 @@ for f in [SEX, AGE, ANTIBODY]:
 # Pairs are (current_field, duration_field) where current is symptom
 # and duration is current+1.
 # ================================================================
-SYMPTOM_FIELDS_RAW = [
-    "participant.p28606", "participant.p28607",
-    "participant.p28609", "participant.p28610",
-    "participant.p28612", "participant.p28613",
-    "participant.p28615", "participant.p28616",
-    "participant.p28624", "participant.p28625",
-    "participant.p28627", "participant.p28628",
-    "participant.p28630", "participant.p28631",
-    "participant.p28633", "participant.p28634",
-    "participant.p28642", "participant.p28643",
-    "participant.p28645", "participant.p28646",
-    "participant.p28648", "participant.p28649",
-    "participant.p28654", "participant.p28655",
-    "participant.p28657", "participant.p28658",
-    "participant.p28663", "participant.p28664",
-    "participant.p28678", "participant.p28679",
-    "participant.p28681", "participant.p28682",
-    "participant.p28684", "participant.p28685",
-    "participant.p28687", "participant.p28688",
-    "participant.p28693", "participant.p28694",
-    "participant.p28696", "participant.p28697",
-    "participant.p28699", "participant.p28700",
-    "participant.p28702", "participant.p28703",
-    "participant.p28711", "participant.p28712",
-    "participant.p28714", "participant.p28715",
-    "participant.p28720", "participant.p28721",
-    "participant.p28723", "participant.p28724",
-    "participant.p28726", "participant.p28727",
-    "participant.p28732", "participant.p28733",
-]
 
 # Validate all symptom fields exist in the schema
 missing_symptom = [f for f in SYMPTOM_FIELDS_RAW if f not in raw_df.columns]
@@ -179,24 +181,16 @@ print(f"Current/duration pairs : {len(pairs)}")   # expect 28
 
 
 # ================================================================
-# 6. COVID POSITIVE FLAG
-# Positive = has a COVID-first date
+# 6. COVID / HEALTHY FLAGS
+# Healthy = no recorded prior COVID dates
 # ================================================================
-covid_pos_expr = (
-    q(COVID_FIRST).isNotNull()
-    | (q(ANTIBODY) == 1)
-)
-# Add COVID_TESTS check only if it's an array-type column
-if COVID_TESTS in raw_df.columns:
-    # array_contains works if COVID_TESTS is ArrayType; adjust value as needed
-    try:
-        covid_pos_expr = covid_pos_expr | array_contains(q(COVID_TESTS), "Positive")
-    except Exception:
-        pass  # Non-array column — skip this condition
+healthy_expr = q(COVID_FIRST).isNull() & q(COVID_LAST).isNull()
+covid_pos_expr = q(COVID_FIRST).isNotNull() | q(COVID_LAST).isNotNull()
 
-analysis_df = raw_df.withColumn(
-    "covid_positive_flag",
-    when(covid_pos_expr, 1).when(~covid_pos_expr, 0).otherwise(lit(None))
+analysis_df = (
+    raw_df
+    .withColumn("healthy_control_flag", when(healthy_expr, 1).otherwise(0))
+    .withColumn("covid_positive_flag", when(covid_pos_expr, 1).otherwise(0))
 )
 
 
@@ -212,44 +206,87 @@ def reduce_or(exprs):
 def reduce_add(exprs):
     return reduce(lambda a, b: a + b, exprs) if exprs else lit(0)
 
-
-# -- Any current symptom (current == 1) --
+# -- Any current symptom (current == 1, no duration filter) --
 any_current_exprs = [q(cur) == 1 for cur, _ in pairs]
 any_current_col = when(reduce_or(any_current_exprs), 1).otherwise(0) if pairs else lit(0)
 
-# -- Long-COVID flag: current == 1 AND duration in (3=4–12wk, 4=>12wk) --
-lc_exprs = [(q(cur) == 1) & q(lng).isin(3, 4) for cur, lng in pairs]
-lc_col = when(reduce_or(lc_exprs), 1).otherwise(0) if pairs else lit(0)
-
-# -- Neuro symptoms (fixed field numbers per your schema) --
-NEURO_CURRENT_FIELDS = [
-    "participant.p28720",   # Problems thinking / concentrating
-    "participant.p28723",   # Problems communicating
-    "participant.p28633",   # Headaches
-    "participant.p28732",   # Numbness / tingling
-]
-neuro_pairs = [
-    (cur, field_map[get_base_field_num(cur) + 1])
-    for cur in NEURO_CURRENT_FIELDS
-    if cur in raw_df.columns
-    and get_base_field_num(cur) is not None
-    and (get_base_field_num(cur) + 1) in field_map
-]
-print(f"\nNeuro current/duration pairs: {len(neuro_pairs)}")
-for p in neuro_pairs:
-    print(f"  {p[0]}  →  {p[1]}")
-
-neuro_lc_exprs = [(q(cur) == 1) & q(lng).isin(3, 4) for cur, lng in neuro_pairs]
-neuro_lc_col = when(reduce_or(neuro_lc_exprs), 1).otherwise(0) if neuro_pairs else lit(0)
-
-# -- Symptom burden counts (FIX: was Python sum(), now reduce_add) --
+# -- Count of currently active symptoms (no duration filter) --
 n_current_col = reduce_add([when(q(cur) == 1, 1).otherwise(0) for cur, _ in pairs]) if pairs else lit(0)
-n_lc_col      = reduce_add([when((q(cur) == 1) & q(lng).isin(3, 4), 1).otherwise(0) for cur, lng in pairs]) if pairs else lit(0)
-n_neuro_lc_col= reduce_add([when((q(cur) == 1) & q(lng).isin(3, 4), 1).otherwise(0) for cur, lng in neuro_pairs]) if neuro_pairs else lit(0)
+
+
+# ----------------------------------------------------------------
+# WHO-style long-COVID symptom mapping.
+# yn_dur() returns lit(False) if either field is absent in schema,
+# preserving the existing field-presence-guard pattern from above.
+# ----------------------------------------------------------------
+def yn_duration_flag(cur_field, dur_field):
+    return (q(cur_field) == 1) & q(dur_field).isin(*DURATION_THRESHOLD)
+
+def yn_dur(cur_field, dur_field):
+    if cur_field not in raw_df.columns or dur_field not in raw_df.columns:
+        return lit(False)
+    return yn_duration_flag(cur_field, dur_field)
+
+who_exprs = {
+    "who_gastrointestinal":         yn_dur("participant.p28606", "participant.p28607"),
+    "who_blurred_vision":           yn_dur("participant.p28609", "participant.p28610"),
+    "who_altered_smell_taste":      reduce_or([
+                                        yn_dur("participant.p28612", "participant.p28613"),
+                                        yn_dur("participant.p28615", "participant.p28616"),
+                                    ]),
+    "who_anxiety":                  yn_dur("participant.p28726", "participant.p28727"),
+    "who_chest_pain":               reduce_or([
+                                        yn_dur("participant.p28642", "participant.p28643"),
+                                        yn_dur("participant.p28645", "participant.p28646"),
+                                    ]),
+    "who_cognitive_dysfunction":    reduce_or([
+                                        yn_dur("participant.p28720", "participant.p28721"),
+                                        yn_dur("participant.p28723", "participant.p28724"),
+                                    ]),
+    "who_cough":                    yn_dur("participant.p28663", "participant.p28664"),
+    "who_dizziness":                yn_dur("participant.p28681", "participant.p28682"),
+    "who_fatigue":                  reduce_or([
+                                        yn_dur("participant.p28696", "participant.p28697"),
+                                        yn_dur("participant.p28699", "participant.p28700"),
+                                    ]),
+    "who_intermittent_fever":       yn_dur("participant.p28714", "participant.p28715"),
+    "who_headache":                 yn_dur("participant.p28633", "participant.p28634"),
+    "who_abdominal_pain":           yn_dur("participant.p28648", "participant.p28649"),
+    "who_joint_pain":               yn_dur("participant.p28657", "participant.p28658"),
+    "who_muscle_pain":              yn_dur("participant.p28654", "participant.p28655"),
+    "who_new_allergy":              yn_dur("participant.p28711", "participant.p28712"),
+    "who_pins_needles":             yn_dur("participant.p28732", "participant.p28733"),
+    "who_post_exertional_malaise":  yn_dur("participant.p28702", "participant.p28703"),
+    "who_shortness_breath":         yn_dur("participant.p28684", "participant.p28685"),
+    "who_sleep_disorder":           reduce_or([
+                                        yn_dur("participant.p28687", "participant.p28688"),
+                                        yn_dur("participant.p28693", "participant.p28694"),
+                                    ]),
+    "who_tachycardia_palpitations": yn_dur("participant.p28678", "participant.p28679"),
+    "who_tinnitus_hearing":         reduce_or([
+                                        yn_dur("participant.p28624", "participant.p28625"),
+                                        yn_dur("participant.p28627", "participant.p28628"),
+                                        yn_dur("participant.p28630", "participant.p28631"),
+                                    ]),
+}
+
+WHO_ALL_COLS   = list(who_exprs.keys())
+WHO_NEURO_COLS = ["who_cognitive_dysfunction", "who_headache", "who_pins_needles"]
+
+# long_covid_symptom_flag: 1 if any WHO symptom is present
+lc_col = when(reduce_or([who_exprs[n] for n in WHO_ALL_COLS]), 1).otherwise(0)
+
+# neuro_long_covid_flag: 1 if any WHO neuro symptom is present
+neuro_lc_col = when(reduce_or([who_exprs[n] for n in WHO_NEURO_COLS]), 1).otherwise(0)
+
+# Burden counts using WHO flags
+n_lc_col       = reduce_add([when(who_exprs[n], 1).otherwise(0) for n in WHO_ALL_COLS])
+n_neuro_lc_col = reduce_add([when(who_exprs[n], 1).otherwise(0) for n in WHO_NEURO_COLS])
 
 # Add all derived columns in one pass (Spark 3.3+: withColumns avoids plan explosion)
 derived_cols = {
-    "any_current_symptom"   : any_current_col,
+    **{name: when(expr, 1).otherwise(0) for name, expr in who_exprs.items()},
+    "any_current_symptom"    : any_current_col,
     "long_covid_symptom_flag": lc_col,
     "neuro_long_covid_flag"  : neuro_lc_col,
     "n_current_symptoms"     : n_current_col,
@@ -268,19 +305,16 @@ except AttributeError:
 
 # ================================================================
 # 8. ANALYSIS GROUPS
-# FIX: explicit null branch first so nulls never silently become
-# "Unclassified". Healthy = confirmed COVID-negative (flag == 0).
 # ================================================================
 analysis_df = analysis_df.withColumn(
     "analysis_group",
-    when(col("covid_positive_flag").isNull(),                                                          "Unknown_COVID_status")
-    .when(col("covid_positive_flag") == 0,                                                             "Healthy")
-    .when((col("covid_positive_flag") == 1) & (col("long_covid_symptom_flag") == 0),                  "COVID_no_LC")
+    when(col("healthy_control_flag") == 1,                                                        "Healthy")
+    .when((col("covid_positive_flag") == 1) & (col("long_covid_symptom_flag") == 0),             "COVID_no_LC")
     .when((col("covid_positive_flag") == 1) & (col("long_covid_symptom_flag") == 1)
-          & (col("neuro_long_covid_flag") == 1),                                                       "LC_Neuro")
+          & (col("neuro_long_covid_flag") == 1),                                                  "LC_Neuro")
     .when((col("covid_positive_flag") == 1) & (col("long_covid_symptom_flag") == 1)
-          & (col("neuro_long_covid_flag") == 0),                                                       "LC_NonNeuro")
-    .otherwise("Unclassified")   # Should be empty — log if not
+          & (col("neuro_long_covid_flag") == 0),                                                  "LC_NonNeuro")
+    .otherwise("Unclassified")
 )
 
 
@@ -334,7 +368,17 @@ if n_unclass > 0:
 
 
 # ================================================================
-# 12. RELEASE CACHE
+# 12. WRITE OUTPUT PARQUET
+# Written here so 06_run_logistic_regression.py can read groups
+# without re-running cohort construction.
+# ================================================================
+GROUPS_PARQUET_OUT = "cohort_with_groups_age_sex_shared_proteins.parquet"
+analysis_df.write.mode("overwrite").parquet(GROUPS_PARQUET_OUT)
+print(f"\nSaved: {GROUPS_PARQUET_OUT}")
+
+
+# ================================================================
+# 13. RELEASE CACHE
 # ================================================================
 raw_df.unpersist()
 print("\nDone. Cache released.")
