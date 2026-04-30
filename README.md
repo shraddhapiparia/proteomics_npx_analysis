@@ -8,9 +8,9 @@ The project focuses on identifying proteins associated with Long COVID subgroups
 
 This repository is under active development.
 
-The pediatric proteomics analysis scripts have been reconstructed and organized into a reproducible workflow. These scripts include differential protein regression, age/sex sensitivity analyses, covariate diagnostics, and downstream protein-protein interaction analysis.
+The pediatric proteomics analysis scripts include differential protein regression, age/sex sensitivity analyses, covariate diagnostics, and downstream protein-protein interaction analysis.
 
-The UK Biobank component is partially implemented but temporarily blocked because the UK Biobank Research Analysis Platform (RAP) is currently unavailable. Once RAP access is restored, the UKB extraction, cohort definition, and regression scripts will be rechecked and rerun.
+The UK Biobank component is partially implemented using slef reported symptom based cohort definition but ICD10 code based diagnosis cohort is temporarily blocked because the UK Biobank Research Analysis Platform (RAP) is currently unavailable. Once RAP access is restored, the UKB extraction, cohort definition, and regression scripts will be rechecked and rerun.
 
 ## Repository structure
 
@@ -23,28 +23,13 @@ proteomics_npx_analysis/
 │   ├── config/                # Configuration files
 │   ├── pediatric/             # Pediatric proteomics analysis scripts
 │   ├── downstream/            # Downstream interpretation, including PPI
-│   ├── shared/                # Shared R helper functions
 │   └── ukbb/                  # UK Biobank RAP workflow scripts
 ├── LICENSE
 └── README.md
 ```
 ## Analysis modules
 
-### 1. Pediatric proteomics regression
-
-The pediatric analysis evaluates protein-level associations across Long COVID subgroups using regression-based models.
-
-Current scripts include:
-
-```text
-scripts/pediatric/pediatric_proteomics_regression.py
-scripts/pediatric/pediatric_subtype_regression.py
-scripts/pediatric/pediatric_subtype_covariate_diagnostics.py
-```
-
-## Analysis modules
-
-### 1. Pediatric proteomics regression
+### 1. Pediatric subtype proteomics regression
 
 The pediatric analysis evaluates protein-level associations across Long COVID subgroups using regression-based models.
 
@@ -57,16 +42,14 @@ Current scripts include:
 These scripts support:
 
 - protein-wise regression analyses
-- subgroup comparisons
+- subgroup comparisons with healthy cohort
 - age and sex sensitivity analyses
 - covariate diagnostics
 - summary tables for interpretation
 
-### 2. Pediatric subtype and covariate sensitivity analysis
+### 2. Pediatric covariate sensitivity analysis
 
-The subtype analysis focuses on whether protein associations remain stable after accounting for available covariates such as age and sex.
-
-This is intended to distinguish proteins that are robust across model specifications from proteins whose associations may be sensitive to demographic imbalance or model adjustment.
+Two proteins (TNFRSF11B and CCL2) reached nominal significance in the subtype comparison only after adjustment for age and sex. To characterize this discrepancy, a diagnostic analysis was run to understand whether the gain in significance reflects confounding, suppression, or improved precision.
 
 ### 3. UK Biobank RAP analysis
 
@@ -128,24 +111,15 @@ Generated outputs are expected to include:
     ├── diagnostics/
     └── ppi/
 
-Large result files and intermediate outputs are not committed by default. Selected summary tables and publication-ready figures may be added when appropriate.
+Large result files and intermediate outputs are not committed by default. 
 
 ## Notes and limitations
 
 - Pediatric analyses are based on a smaller cohort and should be interpreted cautiously.
 - Some models may be sensitive to covariate adjustment because of limited sample size.
 - UK Biobank analyses require RAP access and are currently pending rerun because RAP is unavailable.
-- Pediatric and UK Biobank comparisons require careful direction alignment because group coding may differ across analyses.
 - Protein identifiers and Olink panel naming conventions may require normalization before cross-cohort comparison.
 
-## Next steps
-
-- Add or update environment files for reproducibility.
-- Add a documented end-to-end run command.
-- Commit selected analysis documentation.
-- Validate pediatric scripts after reorganization.
-- Rerun UK Biobank workflow once RAP is available.
-- Add selected summary figures and tables after confirming output file organization.
 
 ## License
 
