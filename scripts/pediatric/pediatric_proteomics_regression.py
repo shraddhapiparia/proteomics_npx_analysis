@@ -1,13 +1,6 @@
 """
 Pediatric Long COVID proteomics — logistic regression analysis.
 
-Reconstructed from:
-  - results/pediatric/updated_analysis_notes.txt
-  - results/pediatric/analysis_notes.txt
-  - docs/qc_notes.md
-  - docs/cohort_notes.md
-  - existing output TSVs in results/pediatric/
-
 Produces:
   results/pediatric/regression_Healthy_vs_LC_Neuro_univariate.tsv
   results/pediatric/regression_Healthy_vs_LC_NonNeuro_univariate.tsv
