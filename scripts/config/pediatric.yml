@@ -1,0 +1,70 @@
+project:
+  name: pediatric_proteomics
+  description: Pediatric Long COVID Olink NPX proteomics analysis
+
+paths:
+  input_data: data/pediatric/pediatric_olink_npx.csv
+  sample_metadata: data/pediatric/pediatric_metadata.csv
+  output_dir: results/pediatric
+
+columns:
+  sample_id: sample_id
+  group: group
+  age: age
+  sex: sex
+  total_abundance: total_abundance
+
+groups:
+  reference_group: LC_NonNeuro
+  case_group: LC_Neuro
+  additional_groups:
+    - Healthy
+    - MISC
+
+protein_settings:
+  protein_columns_prefix: null
+  missingness_threshold: 0.2
+  min_samples_per_group: 5
+  transform: none
+
+models:
+  univariate:
+    formula_template: "{group_binary} ~ {protein}"
+    covariates: []
+
+  age_sex_adjusted:
+    formula_template: "{group_binary} ~ {protein} + age + sex"
+    covariates:
+      - age
+      - sex
+
+  total_abundance_adjusted:
+    formula_template: "{group_binary} ~ {protein} + age + sex + total_abundance"
+    covariates:
+      - age
+      - sex
+      - total_abundance
+
+comparisons:
+  - name: LC_Neuro_vs_LC_NonNeuro
+    case: LC_Neuro
+    reference: LC_NonNeuro
+
+  - name: LC_Neuro_vs_Healthy
+    case: LC_Neuro
+    reference: Healthy
+
+  - name: LC_NonNeuro_vs_Healthy
+    case: LC_NonNeuro
+    reference: Healthy
+
+statistics:
+  test: logistic_regression
+  pvalue_threshold: 0.05
+  fdr_method: benjamini_hochberg
+  fdr_threshold: 0.05
+
+outputs:
+  tables_dir: results/pediatric/tables
+  figures_dir: results/pediatric/figures
+  diagnostics_dir: results/pediatric/diagnostics
