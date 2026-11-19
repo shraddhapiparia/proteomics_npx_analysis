@@ -28,3 +28,5 @@ __pycache__/
 
 # mac/linux
 .DS_Store
+# private archive of superseded pediatric scripts (not for the public repo)
+scripts/pediatric/archive/
