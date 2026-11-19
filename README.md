@@ -1,126 +1,74 @@
 # Proteomics NPX Analysis
 
-This repository contains analysis code and documentation for Olink NPX proteomics analyses in pediatric Long COVID and related UK Biobank validation analyses.
+Reproducible analysis workflows for Olink NPX proteomics in pediatric Long COVID and UK Biobank.
 
-The project focuses on identifying proteins associated with Long COVID subgroups, evaluating robustness to covariate adjustment, and comparing pediatric findings with adult UK Biobank proteomics results where possible.
-
-## Current status
-
-This repository is under active development.
-
-The pediatric proteomics analysis scripts include differential protein regression, age/sex sensitivity analyses, covariate diagnostics, and downstream protein-protein interaction analysis.
-
-The UK Biobank component is partially implemented using slef reported symptom based cohort definition but ICD10 code based diagnosis cohort is temporarily blocked because the UK Biobank Research Analysis Platform (RAP) is currently unavailable. Once RAP access is restored, the UKB extraction, cohort definition, and regression scripts will be rechecked and rerun.
+The repository includes protein association analyses, sensitivity analyses, cross-center comparisons, predictive performance evaluation, and exploratory pathway analysis.
 
 ## Repository structure
 
 ```text
-proteomics_npx_analysis/
-├── data/
-│   └── metadata/              # Field IDs and metadata notes
-├── docs/                      # Analysis notes and interpretation documents
-├── scripts/
-│   ├── config/                # Configuration files
-│   ├── pediatric/             # Pediatric proteomics analysis scripts
-│   ├── downstream/            # Downstream interpretation, including PPI
-│   └── ukbb/                  # UK Biobank RAP workflow scripts
-├── LICENSE
-└── README.md
+scripts/
+├── pediatric/
+│   ├── 01_cohort_qc.py
+│   ├── 02_protein_associations.py
+│   ├── 03_crosscenter_analysis.py
+│   ├── 04_discrimination.py
+│   ├── 05_pathways_figures.py
+│   └── README.md
+├── ukbb/                 # UK Biobank RAP workflow
+├── downstream/           # PPI analysis
+└── shared/               # Reusable functions
+
+docs/                     # Analysis and methodology notes
+data/                     # Local inputs and reference metadata
+results/                  # Generated tables and figures
 ```
-## Analysis modules
 
-### 1. Pediatric subtype proteomics regression
+## Running the analyses
 
-The pediatric analysis evaluates protein-level associations across Long COVID subgroups using regression-based models.
+Run commands from the repository root. Install the required Python and R packages before execution. The pediatric workflows use controlled-access input data that are not included in this repository.
 
-Current scripts include:
+### Pediatric Long COVID
 
-    scripts/pediatric/pediatric_proteomics_regression.py
-    scripts/pediatric/pediatric_subtype_regression.py
-    scripts/pediatric/pediatric_subtype_covariate_diagnostics.py
+```bash
+# 1. Cohort preparation and QC
+python scripts/pediatric/01_cohort_qc.py --outdir results/pediatric/rerun \
+  --metadata_path results/pediatric/rerun/harmonized_metadata.tsv
 
-These scripts support:
+# 2. Protein association and sensitivity analyses
+python scripts/pediatric/02_protein_associations.py --outdir results/pediatric/rerun
 
-- protein-wise regression analyses
-- subgroup comparisons with healthy cohort
-- age and sex sensitivity analyses
-- covariate diagnostics
-- summary tables for interpretation
+# 3. Cross-center analyses and batch diagnostics
+python scripts/pediatric/03_crosscenter_analysis.py --outdir results/pediatric/rerun
 
-### 2. Pediatric covariate sensitivity analysis
+# 4. Cross-validated discrimination
+python scripts/pediatric/04_discrimination.py --outdir results/pediatric/rerun/auc_validation_revised
 
-Two proteins (TNFRSF11B and CCL2) reached nominal significance in the subtype comparison only after adjustment for age and sex. To characterize this discrepancy, a diagnostic analysis was run to understand whether the gain in significance reflects confounding, suppression, or improved precision.
+# 5. Pathway enrichment and figures
+python scripts/pediatric/05_pathways_figures.py --outdir results/pediatric/rerun
+```
 
-### 3. UK Biobank RAP analysis
+Individual analyses can be run using `--stage` where supported. Existing outputs are protected against accidental overwriting; use `--outdir` for new runs.
 
-The UK Biobank component is designed to define adult Long COVID-related groups and compare adult Olink proteomics signals with pediatric findings.
+See [Pediatric analysis README](scripts/pediatric/README.md) for individual stages, input requirements, and methodological details.
 
-Current UKB workflow scripts include:
+### UK Biobank
 
-    scripts/ukbb/00_list_fields.sh
-    scripts/ukbb/01_extract_olink_participants.sh
-    scripts/ukbb/02_build_field_lists.sh
-    scripts/ukbb/03_generate_sql.sh
-    scripts/ukbb/04_merge_pheno_olink.py
-    scripts/ukbb/05_define_groups.py
-    scripts/ukbb/06_run_logistic_regression.py
+The UK Biobank workflow is implemented in `scripts/ukbb/` and requires access to the UK Biobank Research Analysis Platform (RAP).
 
-Planned UKB workflow:
+See [UKBB workflow](docs/ukbb_rap_workflow.md) for details.
 
-    field selection → phenotype/Olink extraction → phenotype-proteomics merge → group definition → logistic regression → pediatric comparison
+### Downstream PPI analysis
 
-**Note:** UK Biobank RAP is currently down, so this part of the workflow is pending rerun and validation.
+```bash
+python scripts/downstream/ppi_analysis.py
+python scripts/downstream/ppi_network_plots.py
+```
 
-### 4. Downstream PPI analysis
+## Data and outputs
 
-Downstream scripts are used to interpret significant or prioritized proteins through protein-protein interaction analysis and network visualization.
-
-    scripts/downstream/ppi_analysis.py
-    scripts/downstream/ppi_network_plots.py
-
-These analyses are intended to help evaluate whether prioritized proteins cluster into biologically interpretable pathways or interaction networks.
-
-## How to run
-
-The exact command-line workflow is still being finalized.
-
-For now, scripts are organized by analysis stage:
-
-    # Pediatric regression
-    python scripts/pediatric/pediatric_proteomics_regression.py
-
-    # Pediatric subtype regression
-    python scripts/pediatric/pediatric_subtype_regression.py
-
-    # Pediatric covariate diagnostics
-    python scripts/pediatric/pediatric_subtype_covariate_diagnostics.py
-
-    # Downstream PPI analysis
-    python scripts/downstream/ppi_analysis.py
-    python scripts/downstream/ppi_network_plots.py
-
-A future update should add a single driver script or documented workflow that runs the analysis end to end.
-
-## Outputs
-
-Generated outputs are expected to include:
-
-    results/
-    ├── tables/
-    ├── figures/
-    ├── diagnostics/
-    └── ppi/
-
-Large result files and intermediate outputs are not committed by default. 
-
-## Notes and limitations
-
-- Pediatric analyses are based on a smaller cohort and should be interpreted cautiously.
-- Some models may be sensitive to covariate adjustment because of limited sample size.
-- UK Biobank analyses require RAP access and are currently pending rerun because RAP is unavailable.
-- Protein identifiers and Olink panel naming conventions may require normalization before cross-cohort comparison.
-
+Individual-level proteomics and phenotype data are not distributed with the repository. Generated results are written to `results/`; large and intermediate files are excluded from version control.
 
 ## License
 
-This project is released under the MIT License.
+MIT License.
